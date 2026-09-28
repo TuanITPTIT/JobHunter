@@ -90,8 +90,8 @@ JobHunter Backend cung cấp toàn bộ REST API cho ứng dụng tuyển dụng
 
 ### 1. Clone repo
 ```bash
-git clone https://github.com/tuanlequoc/Java-Spring-RestFul-Api-JobHunter.git
-cd Java-Spring-RestFul-Api-JobHunter
+git clone https://github.com/TuanITPTIT/JobHunter.git
+cd JobHunter
 ```
 
 ### 2. Tạo database
