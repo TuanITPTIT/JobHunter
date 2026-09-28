@@ -1,0 +1,110 @@
+package vn.tuanlequoc.jobhunter.controller;
+
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.net.URISyntaxException;
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
+import vn.tuanlequoc.jobhunter.domain.reponse.file.ResUploadFileDTO;
+import vn.tuanlequoc.jobhunter.service.FileService;
+import vn.tuanlequoc.jobhunter.util.annotattion.ApiMessage;
+import vn.tuanlequoc.jobhunter.util.error.StorageException;
+
+@RestController
+@RequestMapping("api/v1")
+public class FileController {
+
+    @Value("${tuanlequoc.upload-file.base-uri}")
+    private String baseUri;
+
+    private final FileService fileServive;
+
+    public FileController(FileService fileServive) {
+        this.fileServive = fileServive;
+    }
+
+    // UPLOAD FILE
+    @PostMapping("/files")
+    @ApiMessage("Upload a file")
+    public ResponseEntity<ResUploadFileDTO> upload(@RequestParam(value = "file", required = false) MultipartFile file,
+            @RequestParam("folder") String folder) throws URISyntaxException, IOException, StorageException {
+
+        // B1: validate file có tồn tại không
+        if (file == null || file.isEmpty()) {
+            throw new StorageException("file trống. Vui lòng tải file lên");
+        }
+
+        String fileName = file.getOriginalFilename();
+        // B2: check extension hợp lệ, check đuổi file
+        List<String> allowedExtensions = Arrays.asList("pdf", "jpg", "jpeg", "png", "webp", "heic", "heif", "doc", "docx");
+
+        // B3: check MIME type, check loại file
+        List<String> allowedMimeTypes = Arrays.asList(
+                "application/pdf",
+                "image/jpeg",
+                "image/png",
+                "image/webp",
+                "image/heic",
+                "image/heif",
+                "application/msword",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        // Validate extension and MIME types
+        boolean isValidExtension = allowedExtensions.stream()
+                .anyMatch(ext -> fileName.toLowerCase().endsWith(ext));
+        String contentType = file.getContentType();
+        if (!isValidExtension || !allowedMimeTypes.contains(contentType)) {
+            throw new StorageException("file không đúng định dạng. Vui lòng tải lại file");
+        }
+
+        // B4: tạo folder nếu chưa tồn tại
+        this.fileServive.createUploadFolder(baseUri + folder);
+
+        // B5: lưu file
+        String uploadFile = this.fileServive.store(file, folder);
+
+        // trả về DTO
+        ResUploadFileDTO res = new ResUploadFileDTO(uploadFile, Instant.now());
+        return ResponseEntity.ok().body(res);
+    }
+
+    // DOWNLOAD FILE
+    @GetMapping("/files")
+    @ApiMessage("Download a file")
+    public ResponseEntity<Resource> download(@RequestParam(value = "fileName", required = false) String fileName,
+            @RequestParam(value = "folder", required = false) String folder)
+            throws StorageException, URISyntaxException, FileNotFoundException {
+        // B1: validate input
+        if (fileName == null || folder == null) {
+            throw new StorageException("fileName hoac folder khong duoc de trong");
+        }
+        long fileLength = this.fileServive.getFileLength(fileName, folder);
+
+        // B2: check file tồn tại
+        if (fileLength == 0) {
+            throw new StorageException("File voi ten " + fileName + " khong ton tai");
+        }
+        // B3: lấy file resource
+        InputStreamResource resource = this.fileServive.getResource(fileName, folder);
+        // B4: trả file về cho client
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
+                .contentLength(fileLength)
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(resource);
+    }
+}

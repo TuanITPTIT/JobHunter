@@ -1,0 +1,198 @@
+import { useState, useEffect } from 'react';
+import { CodeOutlined, ContactsOutlined, FileTextOutlined, FireOutlined, LogoutOutlined, MenuFoldOutlined, RiseOutlined, TwitterOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { Avatar, Drawer, Dropdown, MenuProps, Space, message } from 'antd';
+import { Menu } from 'antd';
+import styles from '@/styles/client.module.scss';
+import { isMobile } from 'react-device-detect';
+import { FaReact } from 'react-icons/fa';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
+import { useAppDispatch, useAppSelector } from '@/redux/hooks';
+import { callLogout } from '@/config/api';
+import { setLogoutAction } from '@/redux/slice/accountSlide';
+import ManageAccount from './modal/manage.account';
+import JobMegaMenu from './job/job-mega-menu';
+
+const Header = (props: any) => {
+    const navigate = useNavigate();
+    const dispatch = useAppDispatch();
+
+    const isAuthenticated = useAppSelector(state => state.account.isAuthenticated);
+    const user = useAppSelector(state => state.account.user);
+    const [openMobileMenu, setOpenMobileMenu] = useState<boolean>(false);
+
+    const [current, setCurrent] = useState('home');
+    const location = useLocation();
+
+    const [openMangeAccount, setOpenManageAccount] = useState<boolean>(false);
+
+    useEffect(() => {
+        setCurrent(location.pathname);
+    }, [location])
+
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const shouldOpenAccount = params.get('manageAccount') === '1';
+
+        if (shouldOpenAccount && isAuthenticated) {
+            setOpenManageAccount(true);
+            navigate(location.pathname, { replace: true });
+        }
+    }, [location.search, isAuthenticated, location.pathname, navigate]);
+
+    const items: MenuProps['items'] = [
+        {
+            label: <Link to={'/'}>Home</Link>,
+            key: '/',
+            icon: <TwitterOutlined />,
+        },
+        {
+            label: <Link to={'/job'}>IT Jobs</Link>,
+            key: '/job',
+            icon: <CodeOutlined />,
+        },
+        {
+            label: <Link to={'/company'}>Top IT Companies</Link>,
+            key: '/company',
+            icon: <RiseOutlined />,
+        },
+        {
+            label: <Link to={'/cv-builder'}>AI CV Builder</Link>,
+            key: '/cv-builder',
+            icon: <FileTextOutlined />,
+        }
+    ];
+
+
+
+    const onClick: MenuProps['onClick'] = (e) => {
+        setCurrent(e.key);
+    };
+
+    const handleLogout = async () => {
+        const res = await callLogout();
+        if (res && res && +res.statusCode === 200) {
+            dispatch(setLogoutAction({}));
+            message.success('Logged out successfully');
+            navigate('/')
+        }
+    }
+
+    const itemsDropdown = [
+        {
+            label: <label
+                style={{ cursor: 'pointer' }}
+                onClick={() => setOpenManageAccount(true)}
+            >Manage Account</label>,
+            key: 'manage-account',
+            icon: <ContactsOutlined />
+        },
+        ...(user.role?.permissions?.length ? [{
+            label: <Link
+                to={"/admin"}
+            >Admin Dashboard</Link>,
+            key: 'admin',
+            icon: <FireOutlined />
+        },] : []),
+
+        {
+            label: <label
+                style={{ cursor: 'pointer' }}
+                onClick={() => handleLogout()}
+            >Logout</label>,
+            key: 'logout',
+            icon: <LogoutOutlined />
+        },
+    ];
+
+    const itemsMobiles = [...items, ...itemsDropdown];
+
+    return (
+        <>
+            <div className={styles["header-section"]}>
+                <div className={styles["container"]}>
+                    {!isMobile ?
+                        <div className={styles['header-row']}>
+                            <div className={styles['brand-wrap']}>
+                                <div className={styles['brand']}>
+                                    <FaReact onClick={() => navigate('/')} title='Hỏi Dân IT' />
+                                </div>
+                                <div className={styles['brand-copy']}>
+                                    <strong onClick={() => navigate('/')}>JobHunter</strong>
+                                </div>
+                            </div>
+                            <div className={styles['top-menu']}>
+                                <div className={styles["nav-shell"]}>
+                                    <div className={styles["desktop-nav"]}>
+                                        <Link className={current === '/' ? styles["nav-active"] : styles["nav-link"]} to={'/'}>
+                                            Home
+                                        </Link>
+                                        <Dropdown
+                                            trigger={['hover']}
+                                            placement="bottomLeft"
+                                            dropdownRender={() => <JobMegaMenu />}
+                                        >
+                                            <span
+                                                className={current.startsWith('/job') ? styles["nav-active"] : styles["nav-link"]}
+                                                onClick={() => navigate('/job')}
+                                                style={{ cursor: 'pointer' }}
+                                            >
+                                                IT Jobs
+                                            </span>
+                                        </Dropdown>
+                                        <Link className={current === '/company' ? styles["nav-active"] : styles["nav-link"]} to={'/company'}>
+                                            Top IT Companies
+                                        </Link>
+                                        <Link className={current === '/cv-builder' ? styles["nav-active"] : styles["nav-link"]} to={'/cv-builder'}>
+                                            CV Builder
+                                        </Link>
+                                    </div>
+                                </div>
+                                <div className={styles['extra']}>
+                                    {isAuthenticated === false ?
+                                        <div className={styles["guest-actions"]}>
+                                            <span className={styles["employer-link"]}>For Employers</span>
+                                            <Link to={'/login'} className={styles["signin-btn"]}>Sign In</Link>
+                                        </div>
+                                        :
+                                        <Dropdown menu={{ items: itemsDropdown }} trigger={['click']}>
+                                            <Space className={styles["user-chip"]} style={{ cursor: "pointer" }}>
+                                                <span>Welcome {user?.name}</span>
+                                                <Avatar> {user?.name?.substring(0, 2)?.toUpperCase()} </Avatar>
+                                            </Space>
+                                        </Dropdown>
+                                    }
+
+                                </div>
+
+                            </div>
+                        </div>
+                        :
+                        <div className={styles['header-mobile']}>
+                            <span>JobHunter</span>
+                            <MenuFoldOutlined onClick={() => setOpenMobileMenu(true)} />
+                        </div>
+                    }
+                </div>
+            </div>
+            <Drawer title="Menu"
+                placement="right"
+                onClose={() => setOpenMobileMenu(false)}
+                open={openMobileMenu}
+            >
+                <Menu
+                    onClick={onClick}
+                    selectedKeys={[current]}
+                    mode="vertical"
+                    items={itemsMobiles}
+                />
+            </Drawer>
+            <ManageAccount
+                open={openMangeAccount}
+                onClose={setOpenManageAccount}
+            />
+        </>
+    )
+};
+
+export default Header;

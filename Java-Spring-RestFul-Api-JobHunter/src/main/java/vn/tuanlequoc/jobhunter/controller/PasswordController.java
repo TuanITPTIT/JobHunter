@@ -1,0 +1,60 @@
+package vn.tuanlequoc.jobhunter.controller;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import jakarta.validation.Valid;
+import vn.tuanlequoc.jobhunter.domain.request.ReqChangePassword;
+import vn.tuanlequoc.jobhunter.domain.request.ReqForgotPassword;
+import vn.tuanlequoc.jobhunter.domain.request.ReqResetPassword;
+import vn.tuanlequoc.jobhunter.domain.request.ReqVerifyOtp;
+import vn.tuanlequoc.jobhunter.service.PasswordService;
+import vn.tuanlequoc.jobhunter.service.UserService;
+import vn.tuanlequoc.jobhunter.util.annotattion.ApiMessage;
+import vn.tuanlequoc.jobhunter.util.error.IdInvalidException;
+
+@RestController
+@RequestMapping("/api/v1")
+public class PasswordController {
+    private final PasswordService passwordService;
+
+    public PasswordController(PasswordService passwordService) {
+        this.passwordService = passwordService;
+    }
+
+    @PutMapping("/password/change")
+    @ApiMessage("Change password")
+    public ResponseEntity<Void> changePassword(@Valid @RequestBody ReqChangePassword req) throws IdInvalidException {
+        this.passwordService.handleChangePassword(req);
+        return ResponseEntity.ok(null);
+    }
+
+    // gửi otp
+    @PostMapping("/password/forgot")
+    @ApiMessage("Forgot password")
+    public ResponseEntity<Void> forgotPassword(@Valid @RequestBody ReqForgotPassword req) throws IdInvalidException {
+        // gửi OTP về email
+        this.passwordService.handleForgotPassword(req);
+        return ResponseEntity.ok(null);
+    }
+
+    // verify otp
+    @PostMapping("/password/otp")
+    public ResponseEntity<Void> verifyOtp(@Valid @RequestBody ReqVerifyOtp req) throws IdInvalidException {
+        // check OTP đúng không
+        this.passwordService.handleVerifyOtp(req);
+        return ResponseEntity.ok(null);
+    }
+
+    // reset password
+    @PostMapping("/password/reset")
+    public ResponseEntity<Void> resetPassword(@Valid @RequestBody ReqResetPassword req) throws IdInvalidException {
+        // đổi password sau khi OTP hợp lệ
+        this.passwordService.handleResetPassword(req);
+        return ResponseEntity.ok(null);
+    }
+}

@@ -1,0 +1,159 @@
+package vn.tuanlequoc.jobhunter.controller;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+import org.apache.catalina.security.SecurityUtil;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.turkraft.springfilter.boot.Filter;
+
+import jakarta.validation.Valid;
+import vn.tuanlequoc.jobhunter.domain.Company;
+import vn.tuanlequoc.jobhunter.domain.Job;
+import vn.tuanlequoc.jobhunter.domain.Resume;
+import vn.tuanlequoc.jobhunter.domain.User;
+import vn.tuanlequoc.jobhunter.domain.reponse.ResultPaginationDTO;
+import vn.tuanlequoc.jobhunter.domain.reponse.resume.ResCreateResumeDTO;
+import vn.tuanlequoc.jobhunter.domain.reponse.resume.ResFetchResumeDTO;
+import vn.tuanlequoc.jobhunter.domain.reponse.resume.ResUpdateResumeDTO;
+import vn.tuanlequoc.jobhunter.service.ResumeService;
+import vn.tuanlequoc.jobhunter.service.UserService;
+import vn.tuanlequoc.jobhunter.util.SecurityUtils;
+import vn.tuanlequoc.jobhunter.util.annotattion.ApiMessage;
+import vn.tuanlequoc.jobhunter.util.error.IdInvalidException;
+
+@RestController
+@RequestMapping("/api/v1")
+public class ResumeController {
+
+    private final ResumeService resumeService;
+    private final UserService userService;
+
+    public ResumeController(ResumeService resumeService, UserService userService) {
+        this.resumeService = resumeService;
+        this.userService = userService;
+    }
+
+    @PostMapping("/resumes")
+    @ApiMessage("Create a resume")
+    public ResponseEntity<ResCreateResumeDTO> createNewResume(@Valid @RequestBody Resume reqResume)
+            throws IdInvalidException {
+        Resume resume = this.resumeService.handleCreateNewResume(reqResume);
+        return ResponseEntity.status(HttpStatus.CREATED).body(this.resumeService.convertToResCreateResumeDTO(resume));
+    }
+
+    @PutMapping("/resumes")
+    @ApiMessage("Create a resume")
+    public ResponseEntity<ResUpdateResumeDTO> updateResume(@RequestBody Resume reqResume)
+            throws IdInvalidException {
+        Resume resume = this.resumeService.handleUpdateResume(reqResume);
+        if (resume == null) {
+            throw new IdInvalidException("Resume với id = " + resume.getId() + " không tồn tại");
+        }
+        return ResponseEntity.status(HttpStatus.OK).body(this.resumeService.convertToResUpdateResumeDTO(resume));
+    }
+
+    @DeleteMapping("/resumes/{id}")
+    @ApiMessage("Delete a resume")
+    public ResponseEntity<Void> deleteResume(@PathVariable("id") Long id) throws IdInvalidException {
+        Resume resume = this.resumeService.fetchResumeById(id);
+        if (resume == null) {
+            throw new IdInvalidException("Resume với id = " + id + " không tồn tại");
+        }
+        this.resumeService.handleDeleteResume(id);
+        return ResponseEntity.status(HttpStatus.OK).body(null);
+    }
+
+    @GetMapping("/resumes/{id}")
+    @ApiMessage("Fetch a resume")
+    public ResponseEntity<ResFetchResumeDTO> getResumeById(@PathVariable("id") long id) throws IdInvalidException {
+        Resume resume = this.resumeService.fetchResumeById(id);
+        if (resume == null) {
+            throw new IdInvalidException("Resume với id = " + id + " không tồn tại");
+        }
+        return ResponseEntity.status(HttpStatus.OK).body(this.resumeService.convertResFetchResumeDTO(resume));
+    }
+
+    // @GetMapping("/resumes")
+    // @ApiMessage("Fetch all resumes")
+    // public ResponseEntity<ResultPaginationDTO> getAllResume(@Filter
+    // Specification<Resume> spec, Pageable pageable) {
+    // return
+    // ResponseEntity.status(HttpStatus.OK).body(this.resumeService.fetchAllResume(spec,
+    // pageable));
+
+    // }
+    // GET ALL RESUME (có filter theo company của user)
+    @GetMapping("/resumes")
+    @ApiMessage("Fetch all resume with paginate")
+    public ResponseEntity<ResultPaginationDTO> fetchAll(
+            @Filter Specification<Resume> spec,
+            Pageable pageable) {
+
+        List<Long> arrJobIds = null;
+        // lấy email user hiện tại từ token
+        String email = SecurityUtils.getCurrentUserLogin().isPresent() == true
+                ? SecurityUtils.getCurrentUserLogin().get()
+                : "";
+        // lấy user từ DB
+        User currentUser = this.userService.handleGetUserByUsername(email);
+        if (currentUser != null && currentUser.getRole() != null) {
+            System.out.println("DEBUG: User " + email + " có Role là: " + currentUser.getRole().getName());
+        }
+
+        // Kiểm tra nếu là ADMIN thì cho phép lấy hết
+        boolean isAdmin = currentUser != null && currentUser.getRole() != null &&
+                (currentUser.getRole().getName().equals("SUPER_ADMIN")
+                        || currentUser.getRole().getName().equals("ADMIN"));
+
+        if (isAdmin) {
+            return ResponseEntity.ok().body(this.resumeService.fetchAllResume(spec, pageable));
+        }
+
+        if (currentUser != null) {
+            Company userCompany = currentUser.getCompany();
+            if (userCompany != null) {
+                List<Job> companyJobs = userCompany.getJobs();
+                if (companyJobs != null && !companyJobs.isEmpty()) {
+                    // lấy danh sách jobId của công ty
+                    arrJobIds = companyJobs.stream().map(x -> x.getId())
+                            .collect(Collectors.toList());
+                }
+            }
+        }
+
+        // Tạo Specification để filter resumes theo job IDs
+        Specification<Resume> jobInSpec = null;
+        if (arrJobIds != null && !arrJobIds.isEmpty()) {
+            final List<Long> finalJobIds = arrJobIds;
+            jobInSpec = (root, query, cb) -> root.get("job").get("id").in(finalJobIds);
+        } else {
+            // Nếu không có job, trả về không có kết quả
+            jobInSpec = (root, query, cb) -> cb.disjunction();
+        }
+
+        Specification<Resume> finalSpec = jobInSpec.and(spec);
+
+        return ResponseEntity.ok().body(this.resumeService.fetchAllResume(finalSpec, pageable));
+    }
+
+    @PostMapping("/resumes/by-user")
+    @ApiMessage("Get list resumes by user")
+    public ResponseEntity<ResultPaginationDTO> fetchResumeByUser(Pageable pageable) {
+
+        return ResponseEntity.ok().body(this.resumeService.fetchResumeByUser(pageable));
+    }
+
+}

@@ -1,0 +1,26 @@
+package vn.tuanlequoc.jobhunter.repository;
+
+import java.util.List;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.stereotype.Repository;
+
+import vn.tuanlequoc.jobhunter.domain.Job;
+import vn.tuanlequoc.jobhunter.domain.Skill;
+
+@Repository
+public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificationExecutor<Job> {
+    Page<Job> findAll(Specification<Job> spec, Pageable pageable);
+
+    List<Job> findBySkillsIn(List<Skill> skills);
+
+    long countByActiveTrue();
+
+    List<Job> findTop5ByOrderByCreatedAtDesc();
+
+    long countByCompanyIdAndActiveTrue(long companyId);
+}
